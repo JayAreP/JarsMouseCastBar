@@ -43,6 +43,7 @@ local castFrame
 local configFrame
 local isCasting = false
 local isChanneling = false
+local isEmpowering = false
 
 -- Create horizontal cast bar
 local function CreateHorizontalBar(parent)
@@ -212,11 +213,11 @@ local function CreateCastFrame()
     frame._lastY = 0
     frame:SetScript("OnUpdate", function(self, elapsed)
         -- Update cast progress
-        if isCasting or isChanneling then
+        if isCasting or isChanneling or isEmpowering then
             local currentTime = GetTime()
             local startTime, endTime, spellName
-            
-            if isCasting then
+
+            if isCasting or isEmpowering then
                 local name, text, texture, startTimeMS, endTimeMS = UnitCastingInfo("player")
                 if name then
                     spellName = name
@@ -231,24 +232,24 @@ local function CreateCastFrame()
                     endTime = endTimeMS / 1000
                 end
             end
-            
+
             if startTime and endTime and spellName then
                 local duration = endTime - startTime
                 local remaining = endTime - currentTime
                 local progress = 0
-                
+
                 if isChanneling then
                     -- Channels count down
                     progress = remaining / duration
                 else
-                    -- Casts count up
+                    -- Casts and empowered spells count up
                     progress = 1 - (remaining / duration)
                 end
-                
+
                 -- Clamp progress
                 if progress < 0 then progress = 0 end
                 if progress > 1 then progress = 1 end
-                
+
                 self.bar:SetValue(progress)
                 if JarsMouseCastbarDB.showText then
                     self.bar.text:SetText(spellName)
@@ -262,6 +263,7 @@ local function CreateCastFrame()
                 self:Hide()
                 isCasting = false
                 isChanneling = false
+                isEmpowering = false
             end
         end
         
@@ -344,6 +346,23 @@ local function StartChanneling()
     end)
 end
 
+-- Start empowered cast
+local function StartEmpowering()
+    if not castFrame then return end
+
+    local name, _, _, startTimeMS, endTimeMS = UnitCastingInfo("player")
+    if name then
+        local duration = (endTimeMS - startTimeMS) / 1000
+        if duration > 0 then
+            isEmpowering = true
+            isCasting = false
+            isChanneling = false
+            castFrame.bar:SetStatusBarColor(0.3, 0.8, 1, 1) -- Light blue for empowered
+            castFrame:Show()
+        end
+    end
+end
+
 -- Stop casting/channeling
 local function StopCasting()
     -- Check if we're still channeling before hiding
@@ -354,13 +373,14 @@ local function StopCasting()
         isCasting = false
         return
     end
-    
+
     -- Not channeling, safe to hide
     if castFrame then
         castFrame:Hide()
     end
     isCasting = false
     isChanneling = false
+    isEmpowering = false
 end
 
 -- Failed/interrupted cast
@@ -375,6 +395,7 @@ local function FailedCast()
     end
     
     -- Not channeling, show the failed cast state
+    isEmpowering = false
     if castFrame and castFrame:IsShown() then
         castFrame.bar:SetStatusBarColor(1, 0, 0, 1) -- Red for failed
         C_Timer.After(0.3, StopCasting)
@@ -480,77 +501,41 @@ local function CreateConfigFrame()
     styleLabel:SetPoint("TOPLEFT", 20, -295)
     styleLabel:SetText("Bar Style:")
     
-    local styleDropdown = CreateFrame("Frame", "JMCB_StyleDropdown", frame, "UIDropDownMenuTemplate")
-    styleDropdown:SetPoint("TOPLEFT", 10, -310)
-    
-    local function StyleDropdown_OnClick(self)
-        JarsMouseCastbarDB.barStyle = self.value
-        UIDropDownMenu_SetText(styleDropdown, self:GetText())
-        RecreateCastFrame()
-    end
-    
-    local function StyleDropdown_Initialize(self, level)
-        local info = UIDropDownMenu_CreateInfo()
-        
-        info.text = "Horizontal"
-        info.value = "horizontal"
-        info.func = StyleDropdown_OnClick
-        info.checked = (JarsMouseCastbarDB.barStyle == "horizontal")
-        UIDropDownMenu_AddButton(info)
-        
-        info.text = "Vertical"
-        info.value = "vertical"
-        info.func = StyleDropdown_OnClick
-        info.checked = (JarsMouseCastbarDB.barStyle == "vertical")
-        UIDropDownMenu_AddButton(info)
-        
-        info.text = "Circular"
-        info.value = "circular"
-        info.func = StyleDropdown_OnClick
-        info.checked = (JarsMouseCastbarDB.barStyle == "circular")
-        UIDropDownMenu_AddButton(info)
-    end
-    
-    UIDropDownMenu_Initialize(styleDropdown, StyleDropdown_Initialize)
-    UIDropDownMenu_SetWidth(styleDropdown, 150)
-    
-    local styleText = "Horizontal"
-    if JarsMouseCastbarDB.barStyle == "vertical" then
-        styleText = "Vertical"
-    elseif JarsMouseCastbarDB.barStyle == "circular" then
-        styleText = "Circular"
-    end
-    UIDropDownMenu_SetText(styleDropdown, styleText)
+    local styleNames = { horizontal = "Horizontal", vertical = "Vertical", circular = "Circular" }
+    local styleDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
+    styleDropdown:SetPoint("TOPLEFT", 20, -310)
+    styleDropdown:SetWidth(180)
+    styleDropdown:SetDefaultText(styleNames[JarsMouseCastbarDB.barStyle] or "Horizontal")
+    styleDropdown:SetupMenu(function(_, rootDescription)
+        for value, label in pairs(styleNames) do
+            rootDescription:CreateRadio(label,
+                function() return JarsMouseCastbarDB.barStyle == value end,
+                function()
+                    JarsMouseCastbarDB.barStyle = value
+                    RecreateCastFrame()
+                end)
+        end
+    end)
     
     -- Bar Texture dropdown
     local textureLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     textureLabel:SetPoint("TOPLEFT", 20, -355)
     textureLabel:SetText("Bar Texture:")
     
-    local textureDropdown = CreateFrame("Frame", "JMCB_TextureDropdown", frame, "UIDropDownMenuTemplate")
-    textureDropdown:SetPoint("TOPLEFT", 10, -370)
-    
-    local function TextureDropdown_OnClick(self)
-        JarsMouseCastbarDB.barTexture = self.value
-        UIDropDownMenu_SetText(textureDropdown, self:GetText())
-        RecreateCastFrame()
-    end
-    
-    local function TextureDropdown_Initialize(self, level)
-        local info = UIDropDownMenu_CreateInfo()
-        
+    local textureDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
+    textureDropdown:SetPoint("TOPLEFT", 20, -370)
+    textureDropdown:SetWidth(180)
+    textureDropdown:SetDefaultText(JarsMouseCastbarDB.barTexture or "Blizzard")
+    textureDropdown:SetupMenu(function(_, rootDescription)
         for textureName, _ in pairs(BAR_TEXTURES) do
-            info.text = textureName
-            info.value = textureName
-            info.func = TextureDropdown_OnClick
-            info.checked = (JarsMouseCastbarDB.barTexture == textureName)
-            UIDropDownMenu_AddButton(info)
+            rootDescription:CreateRadio(textureName,
+                function() return JarsMouseCastbarDB.barTexture == textureName end,
+                function()
+                    JarsMouseCastbarDB.barTexture = textureName
+                    RecreateCastFrame()
+                end)
         end
-    end
-    
-    UIDropDownMenu_Initialize(textureDropdown, TextureDropdown_Initialize)
-    UIDropDownMenu_SetWidth(textureDropdown, 150)
-    UIDropDownMenu_SetText(textureDropdown, JarsMouseCastbarDB.barTexture or "Blizzard")
+    end)
     
     -- Show Text checkbox
     local showTextCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
@@ -618,6 +603,9 @@ eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
 eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
 eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_START")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_STOP")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_UPDATE")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -647,6 +635,24 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         if unit == "player" and isChanneling then
             -- Keep updating channel info
             local name = UnitChannelInfo("player")
+            if not name then
+                StopCasting()
+            end
+        end
+    elseif event == "UNIT_SPELLCAST_EMPOWER_START" then
+        local unit = ...
+        if unit == "player" then
+            StartEmpowering()
+        end
+    elseif event == "UNIT_SPELLCAST_EMPOWER_STOP" then
+        local unit = ...
+        if unit == "player" then
+            StopCasting()
+        end
+    elseif event == "UNIT_SPELLCAST_EMPOWER_UPDATE" then
+        local unit = ...
+        if unit == "player" and isEmpowering then
+            local name = UnitCastingInfo("player")
             if not name then
                 StopCasting()
             end

@@ -402,108 +402,334 @@ local function FailedCast()
     end
 end
 
+-- Modern dark UI colour palette
+local UI = {
+    bg        = { 0.10, 0.10, 0.12, 0.95 },
+    header    = { 0.13, 0.13, 0.16, 1 },
+    accent    = { 0.30, 0.75, 0.75, 1 },
+    accentDim = { 0.20, 0.50, 0.50, 1 },
+    text      = { 0.90, 0.90, 0.90, 1 },
+    textDim   = { 0.55, 0.55, 0.58, 1 },
+    border    = { 0.22, 0.22, 0.26, 1 },
+    sliderBg  = { 0.18, 0.18, 0.22, 1 },
+    sliderFill= { 0.30, 0.75, 0.75, 0.6 },
+    btnNormal = { 0.18, 0.18, 0.22, 1 },
+    btnHover  = { 0.24, 0.24, 0.28, 1 },
+    btnPress  = { 0.14, 0.14, 0.17, 1 },
+    checkOn   = { 0.30, 0.75, 0.75, 1 },
+    checkOff  = { 0.22, 0.22, 0.26, 1 },
+}
+
+local FONT_NORMAL = "Fonts\\FRIZQT__.TTF"
+
+-- Helper: section header ---------------------------------------------------
+local function CreateSectionHeader(parent, text)
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetHeight(22)
+    local line = header:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("LEFT", 0, 0)
+    line:SetPoint("RIGHT", 0, 0)
+    line:SetColorTexture(UI.accent[1], UI.accent[2], UI.accent[3], 0.35)
+    local label = header:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT_NORMAL, 13, "")
+    label:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3], UI.accent[4])
+    label:SetPoint("LEFT", 0, 0)
+    label:SetText(text)
+    line:SetPoint("LEFT", label, "RIGHT", 6, 0)
+    header.label = label
+    return header
+end
+
+-- Helper: modern slider ----------------------------------------------------
+local function CreateModernSlider(parent, name, labelText, minVal, maxVal, curVal, step, width, formatFunc, onChange)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(width, 40)
+
+    -- Label (left)
+    local label = container:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT_NORMAL, 11, "")
+    label:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    label:SetPoint("TOPLEFT", 0, 0)
+    label:SetText(labelText)
+
+    -- Value readout (right)
+    local valText = container:CreateFontString(nil, "OVERLAY")
+    valText:SetFont(FONT_NORMAL, 11, "")
+    valText:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3], UI.accent[4])
+    valText:SetPoint("TOPRIGHT", 0, 0)
+    valText:SetText(formatFunc and formatFunc(curVal) or tostring(math.floor(curVal)))
+
+    -- Track background
+    local trackBg = container:CreateTexture(nil, "BACKGROUND")
+    trackBg:SetHeight(4)
+    trackBg:SetPoint("TOPLEFT", 0, -18)
+    trackBg:SetPoint("TOPRIGHT", 0, -18)
+    trackBg:SetColorTexture(UI.sliderBg[1], UI.sliderBg[2], UI.sliderBg[3], UI.sliderBg[4])
+
+    -- Fill texture
+    local fill = container:CreateTexture(nil, "ARTWORK")
+    fill:SetHeight(4)
+    fill:SetPoint("LEFT", trackBg, "LEFT", 0, 0)
+    fill:SetColorTexture(UI.sliderFill[1], UI.sliderFill[2], UI.sliderFill[3], UI.sliderFill[4])
+
+    -- The actual slider (thin, rides on the track)
+    local slider = CreateFrame("Slider", name, container, "MinimalSliderTemplate")
+    slider:SetSize(width, 16)
+    slider:SetPoint("TOPLEFT", 0, -12)
+    slider:SetMinMaxValues(minVal, maxVal)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetValue(curVal)
+
+    -- Thumb styling
+    local thumb = slider:GetThumbTexture()
+    if thumb then
+        thumb:SetSize(14, 14)
+        thumb:SetColorTexture(UI.accent[1], UI.accent[2], UI.accent[3], UI.accent[4])
+    end
+
+    local function UpdateFill(val)
+        local frac = (val - minVal) / (maxVal - minVal)
+        fill:SetWidth(math.max(1, frac * width))
+    end
+    UpdateFill(curVal)
+
+    slider:SetScript("OnValueChanged", function(self, value)
+        valText:SetText(formatFunc and formatFunc(value) or tostring(math.floor(value)))
+        UpdateFill(value)
+        if onChange then onChange(value) end
+    end)
+
+    container.slider = slider
+    container.valText = valText
+    return container
+end
+
+-- Helper: modern checkbox --------------------------------------------------
+local function CreateModernCheck(parent, labelText, checked, onClick)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(200, 20)
+
+    local box = CreateFrame("Button", nil, container)
+    box:SetSize(16, 16)
+    box:SetPoint("LEFT", 0, 0)
+
+    local boxBg = box:CreateTexture(nil, "BACKGROUND")
+    boxBg:SetAllPoints()
+    boxBg:SetColorTexture(UI.checkOff[1], UI.checkOff[2], UI.checkOff[3], UI.checkOff[4])
+    box.bg = boxBg
+
+    local checkMark = box:CreateFontString(nil, "OVERLAY")
+    checkMark:SetFont(FONT_NORMAL, 13, "")
+    checkMark:SetPoint("CENTER", 0, 1)
+    checkMark:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    box.checkMark = checkMark
+
+    local label = container:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT_NORMAL, 11, "")
+    label:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    label:SetPoint("LEFT", box, "RIGHT", 6, 0)
+    label:SetText(labelText)
+
+    local isChecked = checked
+    local function Refresh()
+        if isChecked then
+            boxBg:SetColorTexture(UI.checkOn[1], UI.checkOn[2], UI.checkOn[3], UI.checkOn[4])
+            checkMark:SetText("\226\156\147")  -- checkmark
+        else
+            boxBg:SetColorTexture(UI.checkOff[1], UI.checkOff[2], UI.checkOff[3], UI.checkOff[4])
+            checkMark:SetText("")
+        end
+    end
+    Refresh()
+
+    box:SetScript("OnClick", function()
+        isChecked = not isChecked
+        Refresh()
+        if onClick then onClick(isChecked) end
+    end)
+
+    container.GetChecked = function() return isChecked end
+    container.SetChecked = function(_, v) isChecked = v; Refresh() end
+    return container
+end
+
+-- Helper: modern flat button -----------------------------------------------
+local function CreateModernButton(parent, text, width, height, onClick)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(width, height)
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(UI.btnNormal[1], UI.btnNormal[2], UI.btnNormal[3], UI.btnNormal[4])
+    btn.bg = bg
+
+    local border = btn:CreateTexture(nil, "BORDER")
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetColorTexture(UI.border[1], UI.border[2], UI.border[3], UI.border[4])
+    btn.border = border
+
+    -- Re-layer so bg is above border (border acts as outline)
+    bg:SetDrawLayer("ARTWORK")
+    border:SetDrawLayer("BACKGROUND")
+
+    local label = btn:CreateFontString(nil, "OVERLAY")
+    label:SetFont(FONT_NORMAL, 11, "")
+    label:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    label:SetPoint("CENTER")
+    label:SetText(text)
+    btn.label = label
+
+    btn:SetScript("OnEnter", function()
+        bg:SetColorTexture(UI.btnHover[1], UI.btnHover[2], UI.btnHover[3], UI.btnHover[4])
+    end)
+    btn:SetScript("OnLeave", function()
+        bg:SetColorTexture(UI.btnNormal[1], UI.btnNormal[2], UI.btnNormal[3], UI.btnNormal[4])
+    end)
+    btn:SetScript("OnMouseDown", function()
+        bg:SetColorTexture(UI.btnPress[1], UI.btnPress[2], UI.btnPress[3], UI.btnPress[4])
+    end)
+    btn:SetScript("OnMouseUp", function()
+        bg:SetColorTexture(UI.btnHover[1], UI.btnHover[2], UI.btnHover[3], UI.btnHover[4])
+    end)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
 -- Create configuration window
 local function CreateConfigFrame()
-    local frame = CreateFrame("Frame", "JMCB_ConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(400, 700)
+    -- Main frame with dark backdrop
+    local frame = CreateFrame("Frame", "JMCB_ConfigFrame", UIParent, "BackdropTemplate")
+    frame:SetSize(400, 560)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    frame:SetBackdropColor(UI.bg[1], UI.bg[2], UI.bg[3], UI.bg[4])
+    frame:SetBackdropBorderColor(UI.border[1], UI.border[2], UI.border[3], UI.border[4])
     frame:Hide()
-    
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("TOP", 0, -5)
-    frame.title:SetText("Jar's Mouse Castbar Configuration")
-    
-    -- Bar Length slider
-    local lengthLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    lengthLabel:SetPoint("TOPLEFT", 20, -35)
-    lengthLabel:SetText("Bar Length: " .. JarsMouseCastbarDB.barLength)
-    
-    local lengthSlider = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
-    lengthSlider:SetPoint("TOPLEFT", 20, -55)
-    lengthSlider:SetMinMaxValues(50, 300)
-    lengthSlider:SetValue(JarsMouseCastbarDB.barLength)
-    lengthSlider:SetValueStep(5)
-    lengthSlider:SetObeyStepOnDrag(true)
-    lengthSlider:SetWidth(300)
-    lengthSlider.Low:SetText("50")
-    lengthSlider.High:SetText("300")
-    lengthSlider:SetScript("OnValueChanged", function(self, value)
-        JarsMouseCastbarDB.barLength = value
-        lengthLabel:SetText("Bar Length: " .. math.floor(value))
-        RecreateCastFrame()
-    end)
-    
-    -- Bar Width slider
-    local widthLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    widthLabel:SetPoint("TOPLEFT", 20, -100)
-    widthLabel:SetText("Bar Width: " .. JarsMouseCastbarDB.barWidth)
-    
-    local widthSlider = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
-    widthSlider:SetPoint("TOPLEFT", 20, -120)
-    widthSlider:SetMinMaxValues(5, 80)
-    widthSlider:SetValue(JarsMouseCastbarDB.barWidth)
-    widthSlider:SetValueStep(2)
-    widthSlider:SetObeyStepOnDrag(true)
-    widthSlider:SetWidth(300)
-    widthSlider.Low:SetText("5")
-    widthSlider.High:SetText("80")
-    widthSlider:SetScript("OnValueChanged", function(self, value)
-        JarsMouseCastbarDB.barWidth = value
-        widthLabel:SetText("Bar Width: " .. math.floor(value))
-        RecreateCastFrame()
-    end)
-    
-    -- Cursor Offset X slider
-    local offsetXLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    offsetXLabel:SetPoint("TOPLEFT", 20, -165)
-    offsetXLabel:SetText("Cursor Offset X: " .. JarsMouseCastbarDB.cursorOffsetX)
-    
-    local offsetXSlider = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
-    offsetXSlider:SetPoint("TOPLEFT", 20, -185)
-    offsetXSlider:SetMinMaxValues(-200, 200)
-    offsetXSlider:SetValue(JarsMouseCastbarDB.cursorOffsetX)
-    offsetXSlider:SetValueStep(1)
-    offsetXSlider:SetObeyStepOnDrag(true)
-    offsetXSlider:SetWidth(300)
-    offsetXSlider.Low:SetText("-200")
-    offsetXSlider.High:SetText("200")
-    offsetXSlider:SetScript("OnValueChanged", function(self, value)
-        JarsMouseCastbarDB.cursorOffsetX = value
-        offsetXLabel:SetText("Cursor Offset X: " .. math.floor(value))
-    end)
-    
-    -- Cursor Offset Y slider
-    local offsetYLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    offsetYLabel:SetPoint("TOPLEFT", 20, -230)
-    offsetYLabel:SetText("Cursor Offset Y: " .. JarsMouseCastbarDB.cursorOffsetY)
-    
-    local offsetYSlider = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
-    offsetYSlider:SetPoint("TOPLEFT", 20, -250)
-    offsetYSlider:SetMinMaxValues(-200, 200)
-    offsetYSlider:SetValue(JarsMouseCastbarDB.cursorOffsetY)
-    offsetYSlider:SetValueStep(1)
-    offsetYSlider:SetObeyStepOnDrag(true)
-    offsetYSlider:SetWidth(300)
-    offsetYSlider.Low:SetText("-200")
-    offsetYSlider.High:SetText("200")
-    offsetYSlider:SetScript("OnValueChanged", function(self, value)
-        JarsMouseCastbarDB.cursorOffsetY = value
-        offsetYLabel:SetText("Cursor Offset Y: " .. math.floor(value))
-    end)
-    
+    tinsert(UISpecialFrames, "JMCB_ConfigFrame")
+
+    -- Title bar
+    local titleBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    titleBar:SetHeight(32)
+    titleBar:SetPoint("TOPLEFT", 0, 0)
+    titleBar:SetPoint("TOPRIGHT", 0, 0)
+    titleBar:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    titleBar:SetBackdropColor(UI.header[1], UI.header[2], UI.header[3], UI.header[4])
+    titleBar:SetBackdropBorderColor(UI.border[1], UI.border[2], UI.border[3], UI.border[4])
+
+    local titleText = titleBar:CreateFontString(nil, "OVERLAY")
+    titleText:SetFont(FONT_NORMAL, 13, "")
+    titleText:SetTextColor(UI.accent[1], UI.accent[2], UI.accent[3], UI.accent[4])
+    titleText:SetPoint("LEFT", 12, 0)
+    titleText:SetText("Jar's Mouse Castbar")
+    frame.title = titleText
+
+    -- Close button (minimal "x")
+    local closeBtn = CreateFrame("Button", nil, titleBar)
+    closeBtn:SetSize(32, 32)
+    closeBtn:SetPoint("RIGHT", -2, 0)
+    local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
+    closeTxt:SetFont(FONT_NORMAL, 13, "")
+    closeTxt:SetTextColor(UI.textDim[1], UI.textDim[2], UI.textDim[3], UI.textDim[4])
+    closeTxt:SetPoint("CENTER")
+    closeTxt:SetText("x")
+    closeBtn:SetScript("OnEnter", function() closeTxt:SetTextColor(1, 0.4, 0.4, 1) end)
+    closeBtn:SetScript("OnLeave", function() closeTxt:SetTextColor(UI.textDim[1], UI.textDim[2], UI.textDim[3], UI.textDim[4]) end)
+    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+
+    -- Scroll frame
+    local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 0, -34)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -22, 10)
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetSize(356, 1)
+    scrollFrame:SetScrollChild(content)
+
+    local PAD_LEFT = 20
+    local yOffset = -8
+
+    local function NextY(h)
+        local y = yOffset
+        yOffset = yOffset - h
+        return y
+    end
+
+    -------------------------------------------------------------------
+    -- DIMENSIONS
+    -------------------------------------------------------------------
+    local dimHeader = CreateSectionHeader(content, "Dimensions")
+    dimHeader:SetPoint("TOPLEFT", PAD_LEFT, NextY(26))
+    dimHeader:SetPoint("RIGHT", -PAD_LEFT, 0)
+
+    local lengthSlider = CreateModernSlider(content, nil, "Bar Length", 50, 300,
+        JarsMouseCastbarDB.barLength, 5, 316, nil, function(value)
+            JarsMouseCastbarDB.barLength = value
+            RecreateCastFrame()
+        end)
+    lengthSlider:SetPoint("TOPLEFT", PAD_LEFT, NextY(48))
+
+    local widthSlider = CreateModernSlider(content, nil, "Bar Width", 5, 80,
+        JarsMouseCastbarDB.barWidth, 2, 316, nil, function(value)
+            JarsMouseCastbarDB.barWidth = value
+            RecreateCastFrame()
+        end)
+    widthSlider:SetPoint("TOPLEFT", PAD_LEFT, NextY(48))
+
+    -------------------------------------------------------------------
+    -- POSITION
+    -------------------------------------------------------------------
+    NextY(10)
+    local posHeader = CreateSectionHeader(content, "Position")
+    posHeader:SetPoint("TOPLEFT", PAD_LEFT, NextY(26))
+    posHeader:SetPoint("RIGHT", -PAD_LEFT, 0)
+
+    local offXSlider = CreateModernSlider(content, nil, "Cursor Offset X", -200, 200,
+        JarsMouseCastbarDB.cursorOffsetX, 1, 316, nil, function(value)
+            JarsMouseCastbarDB.cursorOffsetX = value
+        end)
+    offXSlider:SetPoint("TOPLEFT", PAD_LEFT, NextY(48))
+
+    local offYSlider = CreateModernSlider(content, nil, "Cursor Offset Y", -200, 200,
+        JarsMouseCastbarDB.cursorOffsetY, 1, 316, nil, function(value)
+            JarsMouseCastbarDB.cursorOffsetY = value
+        end)
+    offYSlider:SetPoint("TOPLEFT", PAD_LEFT, NextY(48))
+
+    -------------------------------------------------------------------
+    -- STYLE
+    -------------------------------------------------------------------
+    NextY(10)
+    local styleHeader = CreateSectionHeader(content, "Style")
+    styleHeader:SetPoint("TOPLEFT", PAD_LEFT, NextY(26))
+    styleHeader:SetPoint("RIGHT", -PAD_LEFT, 0)
+
     -- Bar Style dropdown
-    local styleLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    styleLabel:SetPoint("TOPLEFT", 20, -295)
-    styleLabel:SetText("Bar Style:")
-    
+    local styleLbl = content:CreateFontString(nil, "OVERLAY")
+    styleLbl:SetFont(FONT_NORMAL, 11, "")
+    styleLbl:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    styleLbl:SetPoint("TOPLEFT", PAD_LEFT, NextY(20))
+    styleLbl:SetText("Bar Style")
+
     local styleNames = { horizontal = "Horizontal", vertical = "Vertical", circular = "Circular" }
-    local styleDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
-    styleDropdown:SetPoint("TOPLEFT", 20, -310)
+    local styleDropdown = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
+    styleDropdown:SetPoint("TOPLEFT", PAD_LEFT, NextY(30))
     styleDropdown:SetWidth(180)
     styleDropdown:SetDefaultText(styleNames[JarsMouseCastbarDB.barStyle] or "Horizontal")
     styleDropdown:SetupMenu(function(_, rootDescription)
@@ -516,14 +742,16 @@ local function CreateConfigFrame()
                 end)
         end
     end)
-    
+
     -- Bar Texture dropdown
-    local textureLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    textureLabel:SetPoint("TOPLEFT", 20, -355)
-    textureLabel:SetText("Bar Texture:")
-    
-    local textureDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
-    textureDropdown:SetPoint("TOPLEFT", 20, -370)
+    local texLbl = content:CreateFontString(nil, "OVERLAY")
+    texLbl:SetFont(FONT_NORMAL, 11, "")
+    texLbl:SetTextColor(UI.text[1], UI.text[2], UI.text[3], UI.text[4])
+    texLbl:SetPoint("TOPLEFT", PAD_LEFT, NextY(20))
+    texLbl:SetText("Bar Texture")
+
+    local textureDropdown = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
+    textureDropdown:SetPoint("TOPLEFT", PAD_LEFT, NextY(30))
     textureDropdown:SetWidth(180)
     textureDropdown:SetDefaultText(JarsMouseCastbarDB.barTexture or "Blizzard")
     textureDropdown:SetupMenu(function(_, rootDescription)
@@ -536,24 +764,24 @@ local function CreateConfigFrame()
                 end)
         end
     end)
-    
+
     -- Show Text checkbox
-    local showTextCheck = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    showTextCheck:SetPoint("TOPLEFT", 20, -410)
-    showTextCheck.text = showTextCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    showTextCheck.text:SetPoint("LEFT", showTextCheck, "RIGHT", 5, 0)
-    showTextCheck.text:SetText("Show Spell Name and Time")
-    showTextCheck:SetChecked(JarsMouseCastbarDB.showText)
-    showTextCheck:SetScript("OnClick", function(self)
-        JarsMouseCastbarDB.showText = self:GetChecked()
-    end)
-    
-    -- Test button
-    local testBtn = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    testBtn:SetSize(150, 25)
-    testBtn:SetPoint("BOTTOM", 0, 20)
-    testBtn:SetText("Test Castbar")
-    testBtn:SetScript("OnClick", function()
+    NextY(6)
+    local showTextCheck = CreateModernCheck(content, "Show Spell Name and Time",
+        JarsMouseCastbarDB.showText, function(checked)
+            JarsMouseCastbarDB.showText = checked
+        end)
+    showTextCheck:SetPoint("TOPLEFT", PAD_LEFT, NextY(24))
+
+    -------------------------------------------------------------------
+    -- TEST
+    -------------------------------------------------------------------
+    NextY(10)
+    local testHeader = CreateSectionHeader(content, "Test")
+    testHeader:SetPoint("TOPLEFT", PAD_LEFT, NextY(26))
+    testHeader:SetPoint("RIGHT", -PAD_LEFT, 0)
+
+    local testBtn = CreateModernButton(content, "Test Castbar", 160, 28, function()
         if castFrame then
             isCasting = true
             isChanneling = false
@@ -564,7 +792,7 @@ local function CreateConfigFrame()
             end
             castFrame.bar:SetValue(0)
             castFrame:Show()
-            
+
             -- Animate test cast over 3 seconds
             local startTime = GetTime()
             local duration = 3.0
@@ -587,7 +815,11 @@ local function CreateConfigFrame()
             end)
         end
     end)
-    
+    testBtn:SetPoint("TOPLEFT", PAD_LEFT, NextY(36))
+
+    -- Set content height so scroll works
+    content:SetHeight(math.abs(yOffset) + 10)
+
     return frame
 end
 
